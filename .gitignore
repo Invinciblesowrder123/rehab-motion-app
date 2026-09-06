@@ -1,0 +1,11 @@
+.env
+node_modules/
+dist/
+coverage/
+.dart_tool/
+.build/
+models/
+*.log
+__pycache__/
+*.pyc
+.flutter_tool_state

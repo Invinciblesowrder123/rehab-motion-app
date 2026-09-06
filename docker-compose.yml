@@ -1,0 +1,137 @@
+name: rehab-motion-mvp
+
+# =============================================================================
+# 康复运动 App · Docker Compose 编排
+# =============================================================================
+# 启动前：
+#   1. 复制 .env.example 为 .env 并填写密码
+#   2. 确保 D:/AI/R/exercises-dataset-main 存在（动作库 SQL）
+#   3. docker compose up -d
+# =============================================================================
+
+services:
+  # ------------------------------------------------------------------------- #
+  # PostgreSQL 16 + pgvector（动作库 + RAG 知识库 + 术语映射）
+  # ------------------------------------------------------------------------- #
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rehab-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rehab_mvp}
+      POSTGRES_USER: ${POSTGRES_USER:-rehab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rehab_dev_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: Asia/Shanghai
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # 初始化 SQL（首次启动自动执行）
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+      # 挂载现有动作库 SQL（供 init 脚本 \i 引用）
+      - ${EXERCISE_SQL_DIR:-D:/AI/R/exercises-dataset-main/sql}:/assets/exercise-sql:ro
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=16MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rehab-net
+
+  # ------------------------------------------------------------------------- #
+  # Redis（会话状态、缓存、限流）
+  # ------------------------------------------------------------------------- #
+  redis:
+    image: redis:7-alpine
+    container_name: rehab-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - rehab-net
+
+  # ------------------------------------------------------------------------- #
+  # AI 推理服务（FastAPI + vLLM，默认 stub 模式不加载 GPU）
+  # ------------------------------------------------------------------------- #
+  ai-service:
+    build:
+      context: ./apps/ai-service
+      dockerfile: Dockerfile
+    container_name: rehab-ai-service
+    restart: unless-stopped
+    environment:
+      AI_MODE: ${AI_MODE:-stub}
+      AI_SHARED_KEY: ${AI_SHARED_KEY:-}
+      MODEL_PATH: ${MODEL_PATH:-/models/Qwen3-8B}
+      LORA_PATH: ${LORA_PATH:-/models/rehab-lora}
+      PORT: 8000
+    volumes:
+      # GPU 环境就绪后取消注释挂载模型权重
+      # - ${MODEL_DIR:-./models}:/models:ro
+      - ./apps/ai-service/app:/app/app:ro
+    ports:
+      - "${AI_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+    networks:
+      - rehab-net
+
+  # ------------------------------------------------------------------------- #
+  # NestJS API（面向 Flutter 的唯一后端，P0 安全闸门在此层）
+  # ------------------------------------------------------------------------- #
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: rehab-api
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rehab}:${POSTGRES_PASSWORD:-rehab_dev_password}@postgres:5432/${POSTGRES_DB:-rehab_mvp}
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SHARED_KEY: ${AI_SHARED_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3000}:3000"
+    networks:
+      - rehab-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  rehab-net:
+    driver: bridge

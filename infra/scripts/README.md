@@ -1,0 +1,1 @@
+Database bootstrap intentionally imports the existing MIT text action dataset SQL files at first PostgreSQL initialization. It does not copy or distribute Gym visual images/GIFs. The API additionally enforces rehab_level <= 2 and performs a conservative per-user check before returning recommendations.

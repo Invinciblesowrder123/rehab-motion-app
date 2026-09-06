@@ -1,0 +1,2 @@
+psycopg[binary]==3.2.3
+# Add FlagEmbedding only in the GPU/embedding worker image after model and licensing review.
