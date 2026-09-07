@@ -4,19 +4,19 @@ import 'package:go_router/go_router.dart';
 import '../config/app_config.dart';
 import '../models/chat_response.dart';
 import '../providers/chat_provider.dart';
-import 'urgent_widget.dart';
-import 'clarify_widget.dart';
 import 'answer_widget.dart';
+import 'clarify_widget.dart';
 import 'error_widget.dart';
+import 'urgent_widget.dart';
 
-/// 聊天主页面
+/// 聊天主页面（对话流 UI）
 ///
-/// 顶部常驻安全提示 → 输入区 → 响应区（按 type 分流渲染）。
-/// 响应区根据后端返回的 type 显示不同组件：
-/// - urgent / clarify_block → UrgentWidget（安全提示）
+/// 顶部常驻安全提示 → 可滚动的消息列表（用户气泡 + 助手卡片） → 底部输入区。
+/// 助手消息按 type 分流：
+/// - urgent / clarify_block → UrgentWidget
 /// - clarify → ClarifyWidget（选择式追问）
-/// - answer → AnswerWidget（聊天回答）
-/// - error → ErrorWidgetPage（错误提示）
+/// - answer → AnswerWidget
+/// - error → ErrorWidgetPage
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
 
@@ -38,9 +38,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Future<void> _send([Map<String, String>? slotAnswers]) async {
     final text = _controller.text.trim();
     if (text.isEmpty && slotAnswers == null) return;
-    await ref.read(chatProvider.notifier).send(text, slotAnswers);
-    if (slotAnswers != null) _controller.clear();
-    // 滚动到底部
+    if (slotAnswers == null) _controller.clear();
+
+    final notifier = ref.read(chatProvider.notifier);
+    await notifier.send(text, slotAnswers);
+
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -54,7 +60,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final asyncChat = ref.watch(chatProvider);
+    final chatState = ref.watch(chatProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -88,45 +94,54 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 style: TextStyle(fontSize: 12, color: Colors.red),
               ),
             ),
-            // 响应区（在输入区上方，占据剩余空间）
+            // 消息列表
             Expanded(
               child: Scrollbar(
                 controller: _scrollController,
-                child: SingleChildScrollView(
+                child: ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  child: asyncChat.when(
-                    data: (chat) => chat == null
-                        ? _EmptyState()
-                        : _ResponseWidget(chat: chat, onAnswer: _send),
-                    loading: () =>
-                        const Center(child: CircularProgressIndicator()),
-                    error: (e, _) => Center(child: Text('错误：$e')),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                  itemCount: chatState.messages.isEmpty
+                      ? 1 // 空状态占位
+                      : chatState.messages.length,
+                  itemBuilder: (context, index) {
+                    if (chatState.messages.isEmpty) {
+                      return const _EmptyState();
+                    }
+                    final msg = chatState.messages[index];
+                    if (msg.isUser) return _UserBubble(msg: msg);
+                    return _AssistantCard(
+                      msg: msg,
+                      onAnswer: (slotAnswers) => _send(slotAnswers),
+                    );
+                  },
                 ),
               ),
             ),
             // 输入区
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: _controller,
-                      maxLines: 2,
+                      maxLines: 3,
+                      minLines: 1,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
                       decoration: const InputDecoration(
                         hintText: '例如：脑卒中后想了解上肢摆放',
                         border: OutlineInputBorder(),
                         contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  asyncChat.isLoading
+                  chatState.isLoading
                       ? const SizedBox(
                           width: 48,
                           height: 48,
@@ -146,44 +161,131 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 }
 
-/// 空状态（首次进入）
-class _EmptyState extends StatelessWidget {
+/// 用户消息气泡
+class _UserBubble extends StatelessWidget {
+  final ChatMessage msg;
+
+  const _UserBubble({required this.msg});
+
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.health_and_safety, size: 64, color: Colors.teal.shade200),
-          const SizedBox(height: 16),
-          const Text(
-            '请输入您的问题',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            '例如：\n• 脑卒中后想了解上肢摆放\n• 腰椎间盘突出能做什么运动\n• 膝关节术后怎么训练',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Colors.grey),
+        ),
+        child: Text(
+          msg.text,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onPrimary,
+            fontSize: 14,
+            height: 1.5,
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-/// 响应渲染组件（按 type 分流）
-class _ResponseWidget extends StatelessWidget {
-  final ChatResponse chat;
+/// 助手消息卡片
+class _AssistantCard extends StatelessWidget {
+  final ChatMessage msg;
   final Future<void> Function(Map<String, String>) onAnswer;
 
-  const _ResponseWidget({required this.chat, required this.onAnswer});
+  const _AssistantCard({required this.msg, required this.onAnswer});
 
   @override
   Widget build(BuildContext context) {
-    if (chat.isUrgent) return UrgentWidget(chat: chat);
-    if (chat.isClarify) return ClarifyWidget(chat: chat, onAnswer: onAnswer);
-    if (chat.isAnswer) return AnswerWidget(chat: chat);
+    final response = msg.response;
+
+    // 加载中占位
+    if (msg.isLoading || response == null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 10),
+              Text('正在思考…', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final chat = response;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.92,
+        ),
+        margin: const EdgeInsets.only(bottom: 12),
+        child: _buildAssistantContent(chat),
+      ),
+    );
+  }
+
+  Widget _buildAssistantContent(ChatResponse chat) {
+    if (chat.isUrgent) {
+      return UrgentWidget(chat: chat);
+    }
+    if (chat.isClarify) {
+      return ClarifyWidget(chat: chat, onAnswer: onAnswer);
+    }
+    if (chat.isAnswer) {
+      return AnswerWidget(chat: chat);
+    }
     return ErrorWidgetPage(chat: chat);
+  }
+}
+
+/// 空状态（首次进入）
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 64),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.health_and_safety, size: 64, color: Colors.teal.shade200),
+            const SizedBox(height: 16),
+            const Text(
+              '请输入您的问题',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '例如：\n• 脑卒中后想了解上肢摆放\n• 腰椎间盘突出能做什么运动\n• 膝关节术后怎么训练',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -63,10 +63,24 @@ class AnswerWidget extends StatelessWidget {
 
   Widget _buildExerciseTile(dynamic ex) {
     final exercise = ex as Map<String, dynamic>;
+    final nameZh = exercise['name_zh'] as String? ?? '';
+    final nameEn = exercise['name_en'] as String? ?? '';
+    final level = exercise['rehab_level'] as int?;
+    final label = exercise['rehab_label'] as String?;
+    final bodyPart = exercise['body_part'] as String?;
+    final equipment = exercise['equipment'] as String?;
+
     return ListTile(
       leading: const Icon(Icons.fitness_center, color: Colors.teal),
-      title: Text(exercise['name'] as String? ?? ''),
-      subtitle: Text('等级：${exercise['level'] ?? '未知'}'),
+      title: Text(nameZh.isNotEmpty ? nameZh : nameEn),
+      subtitle: Text(
+        [
+          if (level != null) '等级：$label（$level）',
+          if (bodyPart != null && bodyPart.isNotEmpty) '部位：$bodyPart',
+          if (equipment != null && equipment.isNotEmpty) '器械：$equipment',
+        ].join(' · '),
+        style: const TextStyle(fontSize: 12),
+      ),
       dense: true,
     );
   }

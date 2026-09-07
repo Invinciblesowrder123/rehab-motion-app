@@ -1,6 +1,7 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ChatRequestDto } from './chat.dto';
+import { ExercisesService } from '../exercises/exercises.service';
 import { checkSafety, DISCLAIMER, SafetyResult } from './safety';
 
 type SlotState = Record<string, string>;
@@ -73,6 +74,8 @@ export class ChatService {
   // 多轮会话状态（MVP 用内存 Map；生产环境应迁移到 Redis）
   private readonly sessions = new Map<string, SlotState>();
 
+  constructor(private readonly exercises: ExercisesService) {}
+
   async handle(dto: ChatRequestDto) {
     const sessionId = dto.sessionId || randomUUID();
     const text = (dto.message || '').trim();
@@ -126,24 +129,11 @@ export class ChatService {
     }
 
     // ------------------------------------------------------------------ //
-    // ⑤ 所有安全检查通过 → 调用 AI 服务
+    // ⑤ 所有安全检查通过 → 调用 AI 服务；不可用时降级到动作库检索
     // ------------------------------------------------------------------ //
     const aiUrl = process.env.AI_SERVICE_URL;
     if (!aiUrl) {
-      // AI 服务未配置时返回保守提示（不返回模型输出）
-      return {
-        type: 'answer',
-        sessionId,
-        answer:
-          '感谢您提供的信息。当前 AI 生成服务尚未就绪，无法提供个性化建议。\n' +
-          '请咨询您的康复治疗师或医生获取专业指导。\n' +
-          DISCLAIMER,
-        referencedExercises: [],
-        sources: [],
-        disclaimer: DISCLAIMER,
-        modelCalled: false,
-        needFollowUp: true,
-      };
+      return this.fallbackAnswer(text, sessionId);
     }
 
     try {
@@ -177,10 +167,42 @@ export class ChatService {
         needFollowUp: false,
       };
     } catch {
-      throw new ServiceUnavailableException({
-        code: 'AI_UNAVAILABLE',
-        message: '生成服务暂不可用，请稍后重试。',
-      });
+      return this.fallbackAnswer(text, sessionId);
     }
+  }
+
+  /**
+   * AI 不可用时降级：从动作库检索相关低等级动作并生成保守回答
+   */
+  private async fallbackAnswer(query: string, sessionId: string) {
+    const exercises = await this.exercises.fallbackSearch(query, 3);
+    let answer = '感谢您提供的信息。当前 AI 生成服务尚未就绪，无法提供个性化建议。\n';
+
+    if (exercises.length > 0) {
+      answer += '\n根据你的描述，从动作库中筛选出以下相对安全的低强度动作供参考：';
+      for (let i = 0; i < exercises.length; i++) {
+        const ex = exercises[i];
+        answer += `\n${i + 1}. ${ex.name_zh}（${ex.rehab_label}）`;
+        const parts: string[] = [];
+        if (ex.body_part) parts.push(`部位：${ex.body_part}`);
+        if (ex.equipment) parts.push(`器械：${ex.equipment}`);
+        if (parts.length > 0) answer += ` — ${parts.join(' · ')}`;
+      }
+      answer += '\n\n请在治疗师或医生确认后尝试，并注意动作幅度和身体疼痛信号。';
+    } else {
+      answer += '请咨询你的康复治疗师或医生获取专业指导。';
+    }
+    answer += '\n\n' + DISCLAIMER;
+
+    return {
+      type: 'answer',
+      sessionId,
+      answer,
+      referencedExercises: exercises,
+      sources: [],
+      disclaimer: DISCLAIMER,
+      modelCalled: false,
+      needFollowUp: true,
+    };
   }
 }
