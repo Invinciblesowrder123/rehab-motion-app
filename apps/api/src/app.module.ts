@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { HealthController } from './common/health.controller';
 import { ChatModule } from './modules/chat/chat.module';
 import { ExercisesModule } from './modules/exercises/exercises.module';
@@ -13,9 +14,20 @@ import { ExercisesModule } from './modules/exercises/exercises.module';
  * 不可用时端点返回 503，不影响 /ai/chat。
  *
  * 这样设计的目的：保证安全网关永远在线。
+ *
+ * ConfigModule 负责读取项目根目录的 .env（本地 npm run start:dev 时
+ * 需要它提供 DATABASE_URL；容器内部由 docker compose 的环境变量覆盖）。
  */
 @Module({
-  imports: [ChatModule, ExercisesModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // 本地从 apps/api 启动时 .env 在项目根目录，两个位置都找一遍
+      envFilePath: ['.env', '../../.env'],
+    }),
+    ChatModule,
+    ExercisesModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}
