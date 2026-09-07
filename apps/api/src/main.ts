@@ -6,7 +6,16 @@ import { initDataSource } from './modules/exercises/exercises.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['log', 'warn', 'error'] });
-  app.enableCors({ origin: (process.env.CORS_ORIGINS || '').split(',').filter(Boolean), credentials: false });
+  // CORS：浏览器从 flutter run -d web-server 的 8080 端口跨源调用 3000，
+  // 必须正确响应预检（OPTIONS）。origin:true 让后端 echo 回请求的 origin，
+  // 比 ['*'] 更兼容浏览器（部分浏览器对 '*' 不通过预检）。
+  // 仅限本地开发；生产环境要写明允许的 origin 域名。
+  app.enableCors({
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: false,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
   // 数据库连接是「可选」的：
