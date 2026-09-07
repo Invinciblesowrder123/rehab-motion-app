@@ -1,23 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'pages/chat_page.dart';
+import 'pages/exercises_page.dart';
 
 /// 应用入口
 ///
-/// 使用 Riverpod 状态管理。
-/// 当前 MVP 阶段只有单页面（ChatPage），后续可加 go_router 路由：
-/// - /chat    聊天问答
-/// - /exercises 动作库列表
-/// - /plans    训练方案
-/// - /profile  个人中心
+/// 使用 Riverpod 状态管理 + go_router 路由。
+/// 两个页面：
+/// - /           AI 问答（含安全提示、追问、回答）
+/// - /exercises  动作库（按部位筛选 + 搜索 + 详情）
 void main() => runApp(const ProviderScope(child: RehabApp()));
+
+/// 路由配置
+final _router = GoRouter(
+  initialLocation: '/',
+  routes: [
+    GoRoute(
+      path: '/',
+      name: 'chat',
+      builder: (context, state) => const ChatPage(),
+    ),
+    GoRoute(
+      path: '/exercises',
+      name: 'exercises',
+      builder: (context, state) => const ExercisesPage(),
+    ),
+  ],
+);
 
 class RehabApp extends StatelessWidget {
   const RehabApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: '康复运动',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -34,7 +51,7 @@ class RehabApp extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.dark,
       ),
-      home: const ChatPage(),
+      routerConfig: _router,
     );
   }
 }

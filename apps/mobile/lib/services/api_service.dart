@@ -32,6 +32,33 @@ class ApiService {
     return response.data as Map<String, dynamic>;
   }
 
+  /// 查询动作库
+  ///
+  /// 注意：后端只返回 rehab_level <= 2 的动作（3 级高危永不返回）。
+  /// [bodyPart] 按身体部位筛选（如 waist / shoulders）
+  /// [keyword] 按中英文名称模糊搜索
+  Future<Map<String, dynamic>> getExercises({
+    String? bodyPart,
+    String? keyword,
+    int limit = 30,
+  }) async {
+    final response = await _dio.get(
+      '/exercises',
+      queryParameters: {
+        if (bodyPart != null) 'bodyPart': bodyPart,
+        if (keyword != null && keyword.isNotEmpty) 'q': keyword,
+        'limit': limit.toString(),
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// 查询动作详情
+  Future<Map<String, dynamic>> getExerciseDetail(String id) async {
+    final response = await _dio.get('/exercises/$id');
+    return response.data as Map<String, dynamic>;
+  }
+
   /// 健康检查
   Future<Map<String, dynamic>> getHealth() async {
     final response = await _dio.get('/health');

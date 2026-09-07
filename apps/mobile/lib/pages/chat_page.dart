@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../config/app_config.dart';
 import '../models/chat_response.dart';
 import '../providers/chat_provider.dart';
@@ -59,6 +60,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       appBar: AppBar(
         title: const Text('康复运动 · AI 问答'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.fitness_center),
+            tooltip: '动作库',
+            onPressed: () => context.push('/exercises'),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: '重置会话',

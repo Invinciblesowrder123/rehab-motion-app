@@ -1,10 +1,11 @@
 .env
+# 开头带 / 表示只忽略项目根目录的，否则会误伤 apps/mobile/lib/models/ 等源码目录
+/models/
 node_modules/
 dist/
 coverage/
 .dart_tool/
 .build/
-models/
 *.log
 __pycache__/
 *.pyc
