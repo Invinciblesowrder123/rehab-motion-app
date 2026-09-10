@@ -147,7 +147,8 @@ export class ChatService {
           message: text,
           profile: state,
         }),
-        signal: AbortSignal.timeout(30000),
+        // aixw 首字延迟实测 45–90s，30s 会稳定超时；默认值放宽，可用 AI_TIMEOUT_MS 覆盖
+        signal: AbortSignal.timeout(Number(process.env.AI_TIMEOUT_MS || 240000)),
       });
       if (!response.ok) {
         throw new Error(`AI service returned ${response.status}`);
@@ -175,7 +176,14 @@ export class ChatService {
    * AI 不可用时降级：从动作库检索相关低等级动作并生成保守回答
    */
   private async fallbackAnswer(query: string, sessionId: string) {
-    const exercises = await this.exercises.fallbackSearch(query, 3);
+    // 数据库不可用时动作库检索会抛 503——这里必须兜住，
+    // 否则 /ai/chat 会跟着 503，违背「安全网关永远在线」的设计。
+    let exercises: Awaited<ReturnType<ExercisesService['fallbackSearch']>> = [];
+    try {
+      exercises = await this.exercises.fallbackSearch(query, 3);
+    } catch {
+      exercises = [];
+    }
     let answer = '感谢您提供的信息。当前 AI 生成服务尚未就绪，无法提供个性化建议。\n';
 
     if (exercises.length > 0) {

@@ -4,4 +4,10 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 开发环境允许明文 HTTP（http://127.0.0.1:3000、http://电脑IP:3000）。
+         Android 9(API 28)+ 默认禁止 cleartext，不开此项真机会报
+         "Cleartext traffic not permitted"。仅 debug 生效，release 不受影响。 -->
+    <application
+        android:usesCleartextTraffic="true" />
 </manifest>

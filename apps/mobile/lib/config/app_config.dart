@@ -14,8 +14,10 @@ class AppConfig {
     return kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
   }
 
-  static const Duration connectTimeout = Duration(seconds: 10);
-  static const Duration receiveTimeout = Duration(seconds: 30);
+  static const Duration connectTimeout = Duration(seconds: 15);
+  /// 生成式回答依赖上游大模型，首字延迟实测 45–90s；
+  /// 接收超时必须大于后端 AI_TIMEOUT_MS，否则用户侧会提前中断。
+  static const Duration receiveTimeout = Duration(seconds: 240);
 
   /// 安全免责声明（所有页面复用）
   static const String disclaimer =
